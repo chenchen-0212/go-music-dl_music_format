@@ -7,6 +7,9 @@ import (
 	"os/exec"
 	"strings"
 	"time"
+
+	"github.com/tc-hib/winres"
+	winresversion "github.com/tc-hib/winres/version"
 )
 
 const resourceTemplate = `{
@@ -73,17 +76,22 @@ const resourceTemplate = `{
 
 const timeFormat = "2006-01-02T15:04:05+08:00"
 
+// desktopIconPath is the multi-resolution favicon selected for the EXE.
+const desktopIconPath = "../internal/web/templates/static/icon/favicon.ico"
+
 type resourceSpec struct {
 	outputFile       string
 	identityName     string
 	internalName     string
 	originalFileName string
+	sysoPath         string
 }
 
 func main() {
 	fileVersion := resolveFileVersion()
 	productVersion := "v1.0.0"
-	timestamp := time.Now().Format(timeFormat)
+	now := time.Now()
+	timestamp := now.Format(timeFormat)
 	copyright := "(c) 2026 guohuiyuan. All Rights Reserved."
 
 	specs := []resourceSpec{
@@ -98,6 +106,7 @@ func main() {
 			identityName:     "music-dl-desktop-go",
 			internalName:     "music-dl-desktop-go",
 			originalFileName: "music-dl-desktop-go.exe",
+			sysoPath:         "../desktop_go/rsrc_windows_amd64.syso",
 		},
 	}
 
@@ -105,6 +114,10 @@ func main() {
 		if err := writeResourceFile(spec, fileVersion, productVersion, timestamp, copyright); err != nil {
 			panic(err)
 		}
+	}
+
+	if err := writeDesktopSyso(specs[len(specs)-1], fileVersion, productVersion, now); err != nil {
+		panic(err)
 	}
 }
 
@@ -152,4 +165,79 @@ func writeResourceFile(
 		productVersion,
 	)
 	return err
+}
+
+func writeDesktopSyso(spec resourceSpec, fileVersion string, productVersion string, timestamp time.Time) error {
+	if spec.sysoPath == "" {
+		return nil
+	}
+
+	iconFile, err := os.Open(desktopIconPath)
+	if err != nil {
+		return fmt.Errorf("open %s: %w", desktopIconPath, err)
+	}
+	defer iconFile.Close()
+
+	appIcon, err := winres.LoadICO(iconFile)
+	if err != nil {
+		return fmt.Errorf("load %s: %w", desktopIconPath, err)
+	}
+
+	var numericVersion [4]uint16
+	if _, err := fmt.Sscanf(fileVersion, "%d.%d.%d.%d",
+		&numericVersion[0], &numericVersion[1],
+		&numericVersion[2], &numericVersion[3],
+	); err != nil {
+		return fmt.Errorf("parse version %s: %w", fileVersion, err)
+	}
+
+	info := winresversion.Info{
+		FileVersion:    numericVersion,
+		ProductVersion: [4]uint16{1, 0, 0, 0},
+		Timestamp:      timestamp,
+	}
+	stringValues := map[string]string{
+		winresversion.Comments:         "A complete, engineered Go music download project with CLI and Web interface",
+		winresversion.CompanyName:      "guohuiyuan",
+		winresversion.FileDescription:  "https://github.com/guohuiyuan/go-music-dl",
+		winresversion.FileVersion:      fileVersion,
+		winresversion.InternalName:     spec.internalName,
+		winresversion.LegalCopyright:   "(c) 2026 guohuiyuan. All Rights Reserved.",
+		winresversion.LegalTrademarks:  "",
+		winresversion.OriginalFilename: spec.originalFileName,
+		winresversion.PrivateBuild:     "",
+		winresversion.ProductName:      "Go Music DL",
+		winresversion.ProductVersion:   productVersion,
+		winresversion.SpecialBuild:     "",
+	}
+	for key, value := range stringValues {
+		if err := info.Set(winresversion.LangDefault, key, value); err != nil {
+			return fmt.Errorf("set version info %s: %w", key, err)
+		}
+	}
+
+	resources := winres.ResourceSet{}
+	if err := resources.SetIcon(winres.ID(2), appIcon); err != nil {
+		return fmt.Errorf("set application icon: %w", err)
+	}
+	resources.SetVersionInfo(info)
+	resources.SetManifest(winres.AppManifest{
+		Identity: winres.AssemblyIdentity{
+			Name:    spec.identityName,
+			Version: numericVersion,
+		},
+		Description:   "Go Music DL desktop application",
+		Compatibility: winres.WinVistaAndAbove,
+		DPIAwareness:  winres.DPIAware,
+	})
+
+	output, err := os.Create(spec.sysoPath)
+	if err != nil {
+		return fmt.Errorf("create %s: %w", spec.sysoPath, err)
+	}
+	defer output.Close()
+	if err := resources.WriteObject(output, winres.ArchAMD64); err != nil {
+		return fmt.Errorf("write %s: %w", spec.sysoPath, err)
+	}
+	return nil
 }
