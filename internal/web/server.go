@@ -416,6 +416,7 @@ func StartWithOptions(port string, opts StartOptions) {
 
 	videoDir := "data/video_output"
 	os.MkdirAll(videoDir, 0755)
+	localTools := opts.ListenHost == "127.0.0.1" || opts.ListenHost == "::1"
 
 	api := r.Group(RoutePrefix)
 
@@ -432,7 +433,14 @@ func StartWithOptions(port string, opts StartOptions) {
 	api.GET("/videogen.css", func(c *gin.Context) { c.FileFromFS("templates/static/css/videogen.css", http.FS(templateFS)) })
 	api.GET("/videogen.js", func(c *gin.Context) { c.FileFromFS("templates/static/js/videogen.js", http.FS(templateFS)) })
 	api.GET("/app.js", func(c *gin.Context) { c.FileFromFS("templates/static/js/app.js", http.FS(templateFS)) })
+	api.GET("/converter.css", func(c *gin.Context) { c.FileFromFS("templates/static/css/converter.css", http.FS(templateFS)) })
+	api.GET("/converter.js", func(c *gin.Context) { c.FileFromFS("templates/static/js/converter.js", http.FS(templateFS)) })
+	api.GET("/app-bootstrap.js", func(c *gin.Context) {
+		c.Header("Cache-Control", "no-store")
+		fmt.Fprintf(c.Writer, "window.MUSIC_DL_LOCAL_TOOLS=%t;\n", localTools)
+	})
 	configAPI := bindAuthMiddleware(api, opts)
+	RegisterConverterRoutes(configAPI, localTools)
 	api.Static("/videos", videoDir)
 
 	api.GET("/render", func(c *gin.Context) {

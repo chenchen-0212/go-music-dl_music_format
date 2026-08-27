@@ -185,6 +185,62 @@
     </div>
 </div>
 
+<div id="audioConverterModal" class="modal-overlay utility-modal-overlay">
+    <div class="modal utility-modal converter-modal">
+        <div class="modal-header">
+            <div>
+                <h3><i class="fa-solid fa-file-audio"></i> 音频转换</h3>
+                <p class="utility-modal-subtitle">批量转换为 MP3，任务最多同时执行 3 个</p>
+            </div>
+            <div class="modal-close" onclick="closeAudioConverter()"><i class="fa-solid fa-xmark"></i></div>
+        </div>
+        <div class="modal-body">
+            <div class="converter-toolbar">
+                <span id="converterSelectedCount" class="utility-modal-count">待转换 0 个</span>
+                <div class="converter-actions">
+                    <button type="button" id="converterPickFilesButton" class="btn-pill btn-pill-primary"><i class="fa-solid fa-file-import"></i> 添加文件</button>
+                    <button type="button" id="converterPickFolderButton" class="btn-pill btn-pill-dl"><i class="fa-solid fa-folder-open"></i> 添加文件夹</button>
+                    <button type="button" id="converterStartButton" class="btn-pill btn-pill-primary" disabled><i class="fa-solid fa-play"></i> 开始转换</button>
+                    <button type="button" id="converterCancelAllButton" class="btn-pill btn-pill-danger"><i class="fa-solid fa-ban"></i> 全部取消</button>
+                </div>
+            </div>
+
+            <div class="converter-settings">
+                <label class="converter-card">
+                    输出目录
+                    <span class="converter-path-row">
+                        <input type="text" id="converterOutputDir" placeholder="留空则保存到源文件目录">
+                        <button type="button" id="converterPickOutputButton" class="btn-pill btn-pill-dl" title="选择输出目录"><i class="fa-solid fa-folder-open"></i></button>
+                    </span>
+                </label>
+                <label class="converter-card">
+                    MP3 比特率
+                    <select id="converterBitrate" class="converter-select">
+                        <option value="128k">128 kbps</option>
+                        <option value="192k">192 kbps</option>
+                        <option value="256k">256 kbps</option>
+                        <option value="320k" selected>320 kbps（推荐）</option>
+                    </select>
+                </label>
+                <label class="converter-card">
+                    文件重名策略
+                    <select id="converterConflict" class="converter-select">
+                        <option value="rename" selected>自动改名 (1).mp3</option>
+                        <option value="skip">跳过已存在文件</option>
+                    </select>
+                </label>
+                <label class="converter-card">
+                    手动添加本机音频路径（每行一个）
+                    <textarea id="converterPaths" class="converter-paths" placeholder="D:\Music\晴天.flac&#10;D:\Music\七里香.m4a"></textarea>
+                </label>
+            </div>
+
+            <p id="converterHint" class="converter-hint"></p>
+            <div id="converterTaskList"><div class="converter-empty">暂无转换任务</div></div>
+        </div>
+    </div>
+</div>
+
 <div id="appUpdateModal" class="modal-overlay" style="z-index: 1008;">
     <div class="modal app-update-modal">
         <div class="modal-header">

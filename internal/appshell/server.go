@@ -2,14 +2,17 @@ package appshell
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"html"
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"time"
 
+	"github.com/guohuiyuan/go-music-dl/internal/mediaassets"
 	"github.com/guohuiyuan/go-music-dl/internal/web"
 )
 
@@ -30,6 +33,9 @@ func HealthURL(port string) string {
 }
 
 func StartDesktopServerAndWait(ctx context.Context, port string) (string, error) {
+	if err := mediaassets.Setup(); err != nil && !errors.Is(err, mediaassets.ErrNotEmbedded) {
+		fmt.Fprintf(os.Stderr, "Failed to prepare bundled FFmpeg: %v\n", err)
+	}
 	go web.StartDesktop(normalizePort(port))
 	target := AppURL(port)
 	if err := WaitForServerReady(ctx, port); err != nil {

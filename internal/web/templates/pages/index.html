@@ -9,6 +9,7 @@
     
     <link rel="stylesheet" href="{{.Root}}/style.css">
     <link rel="stylesheet" href="{{.Root}}/videogen.css">
+    <link rel="stylesheet" href="{{.Root}}/converter.css">
     
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/aplayer/dist/APlayer.min.css">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6/css/all.min.css">
@@ -29,6 +30,7 @@
         <span class="rt-download-records-dot" aria-hidden="true"></span>
     </button>
     <div class="rt-btn" onclick="openPlaybackHistoryModal()" title="播放历史"><i class="fa-solid fa-clock"></i></div>
+    <div class="rt-btn" onclick="openAudioConverter()" title="音频转换"><i class="fa-solid fa-file-audio"></i></div>
 
     {{ if or (gt .TotalPages 1) (eq .SearchType "local_music") }}
     <div class="rt-separator"></div>
@@ -62,6 +64,7 @@
 
 <div id="aplayer"></div>
 <script src="https://cdn.jsdelivr.net/npm/aplayer/dist/APlayer.min.js"></script>
+<script src="{{.Root}}/app-bootstrap.js"></script>
 
 <script>
     window.API_ROOT = "{{.Root}}";
@@ -77,6 +80,7 @@
 <script src="{{.Root}}/app.js"></script>
 {{template "videogen_modal" .}}
 <script src="{{.Root}}/videogen.js"></script>
+<script src="{{.Root}}/converter.js"></script>
 
 <div id="sakana-container" class="sakana-container">
     <div id="sakana-widget"></div>
