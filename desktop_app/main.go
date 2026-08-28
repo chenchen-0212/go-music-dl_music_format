@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"time"
 
 	"gioui.org/app"
 	"gioui.org/f32"
@@ -41,12 +42,22 @@ type desktopApp struct {
 	initialNav            <-chan initialNavigationResult
 	initialNavURL         string
 	initialNavReady       bool
+	initialNavSentAt      time.Time
+	initialNavAcked       bool
+	currentWebURL         string
+	reloadPending         bool
+	reloadDeferred        bool
+	playbackActive        bool
+	lastFrameAt           time.Time
 }
 
 const (
-	downloadCallback   = "musicDlOpenDownload"
-	playbackCallback   = "musicDlPlaybackState"
-	preferredBrowserPK = ""
+	downloadCallback        = "musicDlOpenDownload"
+	playbackCallback        = "musicDlPlaybackState"
+	appStateCallback        = "musicDlAppState"
+	preferredBrowserPK      = ""
+	initialNavRetryInterval = 3 * time.Second
+	resumeReloadThreshold   = 2 * time.Second
 )
 
 type initialNavigationResult struct {
@@ -83,6 +94,16 @@ const bridgeScript = `(function () {
     }
   }
 
+  function notifyAppState(state) {
+    if (globalThis.callback && typeof globalThis.callback.musicDlAppState === "function") {
+      globalThis.callback.musicDlAppState("state:" + state);
+    }
+  }
+
+  document.addEventListener("DOMContentLoaded", function () {
+    notifyAppState("loaded");
+  });
+
   document.addEventListener("play", function (event) {
     if (event.target && event.target.tagName === "AUDIO") {
       notifyPlaybackState("playing");
@@ -104,6 +125,38 @@ const bridgeScript = `(function () {
   window.addEventListener("pagehide", function () {
     notifyPlaybackState("released");
   });
+
+  function bindAPlayerPlayback() {
+    var player = window.ap;
+    if (!player || !player.audio || player.audio.__musicDlPlaybackBound) {
+      return;
+    }
+    var audio = player.audio;
+    audio.__musicDlPlaybackBound = true;
+    function notifyCurrentPlaybackState(state) {
+      if (window.ap && window.ap.audio === audio) {
+        notifyPlaybackState(state);
+      }
+    }
+    audio.addEventListener("playing", function () {
+      notifyCurrentPlaybackState("playing");
+    });
+    audio.addEventListener("pause", function () {
+      notifyCurrentPlaybackState("paused");
+    });
+    audio.addEventListener("ended", function () {
+      notifyCurrentPlaybackState("ended");
+    });
+  }
+
+  function bindAPlayerWhenReady() {
+    bindAPlayerPlayback();
+    if (!window.ap || !window.ap.audio) {
+      setTimeout(bindAPlayerWhenReady, 250);
+    }
+  }
+  bindAPlayerWhenReady();
+  setInterval(bindAPlayerPlayback, 500);
 
   document.addEventListener("click", function (event) {
     if (event.defaultPrevented) {
@@ -191,6 +244,18 @@ func (a *desktopApp) run() error {
 func (a *desktopApp) handleFrame(evt app.FrameEvent) {
 	gtx := app.NewContext(&a.ops, evt)
 
+	now := time.Now()
+	if a.initialNavAcked && !a.lastFrameAt.IsZero() && now.Sub(a.lastFrameAt) > resumeReloadThreshold {
+		// iOS WKWebView can come back from background with a blank native layer.
+		// A long frame gap is the only lifecycle signal available through Gio here.
+		if a.playbackActive {
+			a.reloadDeferred = true
+		} else {
+			a.reloadPending = true
+		}
+	}
+	a.lastFrameAt = now
+
 	a.pendingHistoryBack = a.pendingHistoryBack || consumeBackShortcuts(gtx)
 	a.consumeWebViewEvents(gtx)
 	a.consumeInitialNavigationResult()
@@ -199,6 +264,8 @@ func (a *desktopApp) handleFrame(evt app.FrameEvent) {
 
 	a.ensureBridge(gtx)
 	a.handlePendingNavigation(gtx)
+	a.handlePendingReload(gtx)
+	a.handleInitialNavigationRecovery(gtx)
 	a.handlePendingHistoryBack(gtx)
 	a.handlePendingExternalOpen(gtx)
 }
@@ -232,6 +299,11 @@ func (a *desktopApp) ensureBridge(gtx layout.Context) {
 			Tag:  &a.tag,
 			Name: playbackCallback,
 		})
+		gioplugins.Execute(gtx, giowebview.MessageReceiverCmd{
+			View: &a.tag,
+			Tag:  &a.tag,
+			Name: appStateCallback,
+		})
 		a.callbackRegistered = true
 		a.pendingInitialNav = true
 		a.window.Invalidate()
@@ -244,11 +316,50 @@ func (a *desktopApp) handlePendingNavigation(gtx layout.Context) {
 	}
 
 	// 首次跳转延后到桥接回调准备完成之后，避免页面过早加载。
+	a.navigateTo(gtx, a.navigationTarget())
+	a.pendingInitialNav = false
+}
+
+func (a *desktopApp) handlePendingReload(gtx layout.Context) {
+	if !a.reloadPending || !a.initialNavReady || !a.callbackRegistered {
+		return
+	}
+
+	a.navigateTo(gtx, a.navigationTarget())
+}
+
+func (a *desktopApp) handleInitialNavigationRecovery(gtx layout.Context) {
+	if !a.initialNavReady || !a.callbackRegistered || a.pendingInitialNav || a.initialNavAcked {
+		return
+	}
+	if a.initialNavSentAt.IsZero() || time.Since(a.initialNavSentAt) < initialNavRetryInterval {
+		return
+	}
+
+	// NavigateCmd can be dropped before the native WebView exists, so keep
+	// retrying until the page explicitly confirms that it loaded.
+	a.navigateTo(gtx, a.navigationTarget())
+}
+
+func (a *desktopApp) navigateTo(gtx layout.Context, rawURL string) {
+	if rawURL == "" {
+		return
+	}
+
 	gioplugins.Execute(gtx, giowebview.NavigateCmd{
-		URL:  a.initialNavURL,
+		URL:  rawURL,
 		View: &a.tag,
 	})
-	a.pendingInitialNav = false
+	a.initialNavSentAt = time.Now()
+	a.initialNavAcked = false
+	a.reloadPending = false
+}
+
+func (a *desktopApp) navigationTarget() string {
+	if a.currentWebURL != "" {
+		return a.currentWebURL
+	}
+	return a.initialNavURL
 }
 
 func (a *desktopApp) consumeInitialNavigationResult() {
@@ -319,6 +430,8 @@ func (a *desktopApp) consumeWebViewEvents(gtx layout.Context) {
 		switch evt := evt.(type) {
 		case giowebview.MessageEvent:
 			a.handleWebViewMessage(evt.Message)
+		case giowebview.NavigationEvent:
+			a.handleNavigationEvent(evt.URL)
 		}
 	}
 }
@@ -326,6 +439,10 @@ func (a *desktopApp) consumeWebViewEvents(gtx layout.Context) {
 func (a *desktopApp) handleWebViewMessage(raw string) {
 	if strings.HasPrefix(raw, "playback:") {
 		a.handlePlaybackState(strings.TrimPrefix(raw, "playback:"))
+		return
+	}
+	if strings.HasPrefix(raw, "state:") {
+		a.handleWebViewState(strings.TrimPrefix(raw, "state:"))
 		return
 	}
 
@@ -339,11 +456,39 @@ func (a *desktopApp) handleWebViewMessage(raw string) {
 	log.Printf("received download url from webview: %s", u.String())
 }
 
+func (a *desktopApp) handleNavigationEvent(rawURL string) {
+	if rawURL != "" {
+		a.currentWebURL = rawURL
+	}
+	if strings.HasPrefix(rawURL, "data:") {
+		// Data URLs are not injected with the JS bridge, so the URL change is
+		// the only load acknowledgement available for the startup error page.
+		a.initialNavAcked = true
+		a.reloadPending = false
+	}
+}
+
+func (a *desktopApp) handleWebViewState(state string) {
+	switch strings.TrimSpace(state) {
+	case "loaded":
+		a.initialNavAcked = true
+		a.reloadPending = false
+	}
+}
+
 func (a *desktopApp) handlePlaybackState(state string) {
 	switch strings.TrimSpace(state) {
 	case "playing":
+		a.playbackActive = true
+		a.reloadPending = false
+		a.reloadDeferred = false
 		a.setPlaybackWakeLock(true)
 	case "paused", "ended", "released":
+		a.playbackActive = false
+		if a.reloadDeferred {
+			a.reloadDeferred = false
+			a.reloadPending = true
+		}
 		a.setPlaybackWakeLock(false)
 	}
 }

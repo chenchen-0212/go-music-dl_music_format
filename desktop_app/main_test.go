@@ -28,9 +28,22 @@ func TestBridgeReportsPlaybackState(t *testing.T) {
 		`notifyPlaybackState("paused")`,
 		`notifyPlaybackState("ended")`,
 		`notifyPlaybackState("released")`,
+		`bindAPlayerPlayback`,
+		`window.ap.audio === audio`,
 	} {
 		if !strings.Contains(bridgeScript, want) {
 			t.Fatalf("bridgeScript missing playback token %q", want)
+		}
+	}
+}
+
+func TestBridgeReportsAppLoadState(t *testing.T) {
+	for _, want := range []string{
+		"musicDlAppState",
+		`notifyAppState("loaded")`,
+	} {
+		if !strings.Contains(bridgeScript, want) {
+			t.Fatalf("bridgeScript missing app state token %q", want)
 		}
 	}
 }
@@ -40,6 +53,74 @@ func TestHandleWebViewMessagePlaybackDoesNotOpenURL(t *testing.T) {
 	app.handleWebViewMessage("playback:paused")
 	if app.pendingExternalOpenTo != nil {
 		t.Fatalf("playback message should not be treated as URL: %s", app.pendingExternalOpenTo)
+	}
+}
+
+func TestPlaybackStateDefersResumeReloadUntilStopped(t *testing.T) {
+	app := newDesktopApp(nil, nil)
+	app.reloadDeferred = true
+	app.reloadPending = true
+
+	app.handlePlaybackState("playing")
+	if !app.playbackActive {
+		t.Fatal("playing should mark playback as active")
+	}
+	if app.reloadDeferred || app.reloadPending {
+		t.Fatal("playing should cancel pending resume reloads")
+	}
+
+	app.handlePlaybackState("paused")
+	if app.playbackActive {
+		t.Fatal("paused should clear playback active state")
+	}
+	if app.reloadPending || app.reloadDeferred {
+		t.Fatal("paused should not create a reload without a new frame gap")
+	}
+}
+
+func TestPlaybackStopFlushesDeferredReload(t *testing.T) {
+	app := newDesktopApp(nil, nil)
+	app.handlePlaybackState("playing")
+	app.reloadDeferred = true
+
+	app.handlePlaybackState("ended")
+	if !app.reloadPending || app.reloadDeferred {
+		t.Fatal("stopping playback should flush a deferred resume reload")
+	}
+}
+
+func TestHandleWebViewMessageAppStateDoesNotOpenURL(t *testing.T) {
+	app := newDesktopApp(nil, nil)
+	app.handleWebViewMessage("state:loaded")
+	if app.pendingExternalOpenTo != nil {
+		t.Fatalf("app state message should not be treated as URL: %s", app.pendingExternalOpenTo)
+	}
+	if !app.initialNavAcked {
+		t.Fatal("state:loaded should acknowledge the initial navigation")
+	}
+}
+
+func TestNavigationEventTracksCurrentURL(t *testing.T) {
+	app := newDesktopApp(nil, nil)
+	app.initialNavReady = true
+	app.handleNavigationEvent("http://127.0.0.1:37777/music/settings")
+
+	if app.currentWebURL != "http://127.0.0.1:37777/music/settings" {
+		t.Fatalf("currentWebURL = %q", app.currentWebURL)
+	}
+	if app.initialNavAcked {
+		t.Fatal("navigation event alone must not acknowledge an HTTP page; only DOMContentLoaded can")
+	}
+}
+
+func TestNavigationEventAcknowledgesStartupErrorDataURL(t *testing.T) {
+	app := newDesktopApp(nil, nil)
+	app.initialNavReady = true
+	app.initialNavURL = "data:text/html;charset=utf-8,startup-error"
+	app.handleNavigationEvent(app.initialNavURL)
+
+	if !app.initialNavAcked {
+		t.Fatal("data URL navigation should acknowledge the startup error page")
 	}
 }
 

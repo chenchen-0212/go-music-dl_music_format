@@ -254,6 +254,8 @@ body.batch-mode .song-card { padding-left: 10px; }
 .btn-pill-switch:hover:not(:disabled) { border-color: #f97316; background: #fffaf0; }
 .btn-pill-dl { background: var(--btn-dl-bg); color: var(--btn-dl-text); border-color: var(--btn-dl-border); }
 .btn-pill-dl:hover:not(:disabled) { border-color: #3182ce; background: #ebf8ff; }
+.btn-pill-copy { background: #eff6ff; color: #2563eb; border-color: #bfdbfe; }
+.btn-pill-copy:hover:not(:disabled) { border-color: #60a5fa; background: #dbeafe; }
 .btn-pill-danger { background: #fee2e2; color: #dc2626; border-color: #fca5a5; }
 .btn-pill-danger:hover { background: #fecaca; }
 .btn-pill-warn { background: var(--btn-warn-bg); color: var(--btn-warn-text); border-color: var(--btn-warn-border); padding: 4px 12px; font-size: 13px; }

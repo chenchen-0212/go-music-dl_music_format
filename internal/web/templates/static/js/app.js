@@ -6012,6 +6012,7 @@ function updateBatchToolbar() {
   const batchRemoveCollection = document.getElementById(
     "btn-batch-remove-collection",
   );
+  const batchCopy = document.getElementById("btn-batch-copy-urls");
 
   if (document.getElementById("selected-count")) {
     document.getElementById("selected-count").textContent = count;
@@ -6033,6 +6034,7 @@ function updateBatchToolbar() {
   if (count > 0) {
     if (batchSwitch) batchSwitch.disabled = nonLocalCount === 0;
     if (batchDl) batchDl.disabled = nonLocalCount === 0;
+    if (batchCopy) batchCopy.disabled = nonLocalCount === 0;
     if (batchDeleteLocal) batchDeleteLocal.disabled = localCount === 0;
     if (batchFavLocal) batchFavLocal.disabled = localCount === 0;
     if (batchFav) batchFav.disabled = false;
@@ -6040,6 +6042,7 @@ function updateBatchToolbar() {
   } else {
     if (batchSwitch) batchSwitch.disabled = true;
     if (batchDl) batchDl.disabled = true;
+    if (batchCopy) batchCopy.disabled = !pageHasNonLocalSongs();
     if (batchDeleteLocal) batchDeleteLocal.disabled = true;
     if (batchFavLocal) batchFavLocal.disabled = true;
     if (batchFav) batchFav.disabled = true;
@@ -6098,6 +6101,111 @@ function getSelectedSongs() {
     }
   });
   return songs;
+}
+
+function pageHasNonLocalSongs() {
+  const cards = document.querySelectorAll(".song-card");
+  for (const card of cards) {
+    const song = songFromCard(card);
+    if (song && !isLocalMusicSourceValue(song.source)) return true;
+  }
+  return false;
+}
+
+function toAbsoluteDownloadURL(url) {
+  const value = String(url || "");
+  if (!value) return value;
+  if (/^https?:\/\//i.test(value) || value.startsWith("//")) return value;
+  try {
+    return new URL(value, window.location.href).href;
+  } catch (_) {
+    return value;
+  }
+}
+
+async function copyTextToClipboard(text) {
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return;
+    } catch (_) {
+      // Fall through to the legacy path for webviews without clipboard permission.
+    }
+  }
+
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", "");
+  textarea.style.position = "fixed";
+  textarea.style.top = "0";
+  textarea.style.left = "0";
+  textarea.style.opacity = "0";
+  document.body.appendChild(textarea);
+  textarea.focus();
+  textarea.select();
+  textarea.setSelectionRange(0, text.length);
+  const copied = document.execCommand && document.execCommand("copy");
+  document.body.removeChild(textarea);
+  if (!copied) {
+    throw new Error("当前环境不支持剪贴板");
+  }
+}
+
+async function batchCopyDownloadUrls() {
+  const selectedSongs = getSelectedSongs().filter(
+    (song) => !isLocalMusicSourceValue(song.source),
+  );
+
+  let songs = selectedSongs;
+  if (songs.length === 0) {
+    songs = [];
+    document.querySelectorAll(".song-card").forEach((card) => {
+      const song = songFromCard(card);
+      if (song && !isLocalMusicSourceValue(song.source)) {
+        songs.push(song);
+      }
+    });
+  }
+
+  if (songs.length === 0) {
+    showToast("没有可复制的下载地址", "当前列表没有可下载的歌曲。", "info");
+    return;
+  }
+
+  const urls = songs.map((song) =>
+    toAbsoluteDownloadURL(
+      buildBrowserDownloadURL(
+        song.id,
+        song.source,
+        song.name,
+        song.artist,
+        song.album || "",
+        song.cover || "",
+        song.extra || "",
+      ),
+    ),
+  );
+  const text = urls.join("\n");
+
+  try {
+    await copyTextToClipboard(text);
+    const scope =
+      selectedSongs.length > 0
+        ? `已选 ${selectedSongs.length} 首`
+        : `当前页 ${songs.length} 首`;
+    showToast(
+      "下载地址已复制",
+      `${scope}歌曲的下载链接已写入剪贴板，可直接粘贴到 aria2。`,
+      "success",
+      BATCH_DOWNLOAD_NOTICE_MS,
+    );
+  } catch (err) {
+    showToast(
+      "复制失败",
+      err && err.message ? err.message : "请手动复制。",
+      "warning",
+    );
+  }
 }
 
 async function batchDownload() {

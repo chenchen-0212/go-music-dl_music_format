@@ -79,11 +79,23 @@ echo JAVA_HOME = %JAVA_HOME%
 echo ANDROID_HOME = %ANDROID_HOME%
 echo ANDROID_NDK_ROOT = %ANDROID_NDK_ROOT%
 echo ADB_EXE = %ADB_EXE%
-echo Download gogio
-
-go install github.com/lianhong2758/gio-cmd/gogio@latest
+set "GOGIO_BIN=%CD%\gogio-local.exe"
+echo Building local gogio
+pushd tools\gio-cmd
 if errorlevel 1 (
-	echo ERROR: go install gogio failed.
+	echo ERROR: cannot enter tools\gio-cmd directory.
+	exit /b 1
+)
+set "GOWORK=off"
+go build -o "%GOGIO_BIN%" ./gogio
+if errorlevel 1 (
+	echo ERROR: go build gogio failed.
+	popd
+	exit /b 1
+)
+popd
+if not exist "%GOGIO_BIN%" (
+	echo ERROR: gogio binary was not created at "%GOGIO_BIN%".
 	exit /b 1
 )
 
@@ -97,7 +109,7 @@ set "ANDROID_KEYSTORE_FILE_ABS="
 if defined ANDROID_KEYSTORE_FILE for %%I in ("%ANDROID_KEYSTORE_FILE%") do set "ANDROID_KEYSTORE_FILE_ABS=%%~fI"
 
 echo Building!
-gogio -target android ^
+"%GOGIO_BIN%" -target android ^
  -buildmode exe ^
  -o ../music-dl.apk ^
  -appid com.musicdl.app.util ^

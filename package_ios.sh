@@ -42,6 +42,8 @@ add_local_networking_exception() {
   /usr/libexec/PlistBuddy -c "Add :NSAppTransportSecurity dict" "$plist" >/dev/null 2>&1 || true
   /usr/libexec/PlistBuddy -c "Set :NSAppTransportSecurity:NSAllowsLocalNetworking true" "$plist" >/dev/null 2>&1 || \
     /usr/libexec/PlistBuddy -c "Add :NSAppTransportSecurity:NSAllowsLocalNetworking bool true" "$plist" >/dev/null
+  /usr/libexec/PlistBuddy -c "Set :NSLocalNetworkUsageDescription MusicDL uses the local network to connect to its embedded web server." "$plist" >/dev/null 2>&1 || \
+    /usr/libexec/PlistBuddy -c "Add :NSLocalNetworkUsageDescription string MusicDL uses the local network to connect to its embedded web server." "$plist" >/dev/null
   plutil -convert binary1 "$plist"
 
   local ats_value

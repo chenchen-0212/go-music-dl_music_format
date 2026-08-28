@@ -312,6 +312,7 @@ func TestLocalMusicPageRendersSongListWithoutUnsupportedActions(t *testing.T) {
 		`class="btn-circle btn-dl btn-download"`,
 		`id="btn-batch-switch"`,
 		`id="btn-batch-dl"`,
+		`id="btn-batch-copy-urls"`,
 		`id="btn-reindex"`,
 		`onclick="reindexLocalMusic()"`,
 		`selectInvalidSongs()`,

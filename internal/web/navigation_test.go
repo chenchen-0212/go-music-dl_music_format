@@ -352,6 +352,51 @@ func TestSongListIncludesSortControls(t *testing.T) {
 	}
 }
 
+func TestBatchCopyDownloadUrlsUi(t *testing.T) {
+	htmlContent, err := templateFS.ReadFile("templates/partials/song_list.html")
+	if err != nil {
+		t.Fatalf("ReadFile(song_list.html): %v", err)
+	}
+	html := string(htmlContent)
+	for _, want := range []string{
+		`id="btn-batch-copy-urls"`,
+		`onclick="batchCopyDownloadUrls()"`,
+	} {
+		if !strings.Contains(html, want) {
+			t.Fatalf("song_list.html missing batch copy URL token %q", want)
+		}
+	}
+
+	jsContent, err := templateFS.ReadFile("templates/static/js/app.js")
+	if err != nil {
+		t.Fatalf("ReadFile(app.js): %v", err)
+	}
+	js := string(jsContent)
+	for _, want := range []string{
+		"function batchCopyDownloadUrls()",
+		"async function copyTextToClipboard(",
+		"navigator.clipboard",
+		"document.execCommand",
+		"buildBrowserDownloadURL(",
+		"function toAbsoluteDownloadURL(",
+	} {
+		if !strings.Contains(js, want) {
+			t.Fatalf("app.js missing batch copy URL token %q", want)
+		}
+	}
+
+	// aria2 must use the GET stream endpoint, never the POST-only save_local URL.
+	start := strings.Index(js, "function batchCopyDownloadUrls()")
+	end := strings.Index(js, "async function batchDownload()")
+	if start < 0 || end <= start {
+		t.Fatal("could not isolate batchCopyDownloadUrls implementation")
+	}
+	body := js[start:end]
+	if strings.Contains(body, "buildDownloadURL(") {
+		t.Fatal("batchCopyDownloadUrls must not build POST-only save_local URLs")
+	}
+}
+
 func TestSettingsModalIncludesDownloadDirPresets(t *testing.T) {
 	content, err := templateFS.ReadFile("templates/partials/modals.html")
 	if err != nil {

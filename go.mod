@@ -13,7 +13,7 @@ require (
 	github.com/gin-gonic/gin v1.11.0
 	github.com/gioui-plugins/gio-plugins v0.9.2
 	github.com/glebarez/sqlite v1.11.0
-	github.com/guohuiyuan/music-lib v1.1.1-0.20260824162426-6278eb95ced9
+	github.com/guohuiyuan/music-lib v1.1.1-0.20260827101307-9a44386f0449
 	github.com/jchv/go-webview2 v0.0.0-20260205173254-56598839c808
 	github.com/spf13/cobra v1.10.2
 	golang.org/x/crypto v0.46.0
