@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/url"
 	"os"
+	"runtime"
 	"strings"
 	"time"
 
@@ -60,6 +61,13 @@ const (
 	resumeReloadThreshold   = 2 * time.Second
 )
 
+// resumeReloadEnabled 只在 iOS 上启用"长帧间隔 = 从后台恢复"的重载恢复逻辑。
+// WKWebView 在 iOS 上回到前台可能出现空白原生层，长帧间隔是 Gio 唯一可用的
+// 生命周期信号。安卓端 Gio 在画面静止时本来就不持续出帧——用户停留在搜索
+// 结果页时几秒无帧是正常空闲，不是后台恢复信号；用它触发整页重载会把用户
+// 刚搜出的结果冲掉（表现为"搜索为空"），因此安卓端必须关闭。
+var resumeReloadEnabled = runtime.GOOS == "ios"
+
 type initialNavigationResult struct {
 	URL string
 	Err error
@@ -100,9 +108,40 @@ const bridgeScript = `(function () {
     }
   }
 
-  document.addEventListener("DOMContentLoaded", function () {
+  function notifyShellURL(url) {
+    if (globalThis.callback && typeof globalThis.callback.musicDlAppState === "function") {
+      globalThis.callback.musicDlAppState("url:" + url);
+    }
+  }
+
+  // 桥接脚本可能在 DOMContentLoaded 之后才注入（安卓端原生 WebView 是异步
+  // 创建的，安装命令可能晚到甚至丢失）。只挂监听器就永远等不到事件，Go 侧
+  // 收不到加载确认，会每隔几秒重试导航，把用户刚搜出的结果冲掉。
+  // 文档已就绪时直接补发一次确认。
+  console.log("[musicdl-bridge] run readyState=" + document.readyState + " callback=" + (typeof globalThis.callback));
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", function () {
+      console.log("[musicdl-bridge] ack via DOMContentLoaded");
+      notifyAppState("loaded");
+    });
+  } else {
+    console.log("[musicdl-bridge] ack immediately");
     notifyAppState("loaded");
-  });
+  }
+
+  // SPA 导航（fetch + history.pushState）不产生原生 NavigationEvent，壳层的
+  // currentWebURL 会一直停留在首页；一旦发生重载（从后台恢复、启动重试），
+  // 用户就会被送回首页、搜索结果丢失。这里把新地址同步给壳层。
+  var nativePushState = history.pushState;
+  history.pushState = function () {
+    nativePushState.apply(history, arguments);
+    notifyShellURL(String(window.location.href));
+  };
+  var nativeReplaceState = history.replaceState;
+  history.replaceState = function () {
+    nativeReplaceState.apply(history, arguments);
+    notifyShellURL(String(window.location.href));
+  };
 
   document.addEventListener("play", function (event) {
     if (event.target && event.target.tagName === "AUDIO") {
@@ -245,9 +284,10 @@ func (a *desktopApp) handleFrame(evt app.FrameEvent) {
 	gtx := app.NewContext(&a.ops, evt)
 
 	now := time.Now()
-	if a.initialNavAcked && !a.lastFrameAt.IsZero() && now.Sub(a.lastFrameAt) > resumeReloadThreshold {
+	if resumeReloadEnabled && a.initialNavAcked && !a.lastFrameAt.IsZero() && now.Sub(a.lastFrameAt) > resumeReloadThreshold {
 		// iOS WKWebView can come back from background with a blank native layer.
 		// A long frame gap is the only lifecycle signal available through Gio here.
+		log.Printf("frame gap %v detected, scheduling reload (playback=%v)", now.Sub(a.lastFrameAt), a.playbackActive)
 		if a.playbackActive {
 			a.reloadDeferred = true
 		} else {
@@ -277,33 +317,45 @@ func (a *desktopApp) layoutWebView(gtx layout.Context) {
 	stack.Pop(gtx.Ops)
 }
 
+// installBridge 注入 WebView 桥接脚本。可以重复调用：脚本自身带
+// __musicDlDesktopBridgeInstalled 幂等保护，重复注入不会重复绑定事件。
+func (a *desktopApp) installBridge(gtx layout.Context) {
+	gioplugins.Execute(gtx, giowebview.InstallJavascriptCmd{
+		View:   &a.tag,
+		Script: bridgeScript,
+	})
+}
+
+// registerCallbacks 注册 JS→Go 回调名。可以重复调用：插件侧对同名回调返回
+// duplicate 错误并保留原注册，重复下发无副作用。
+func (a *desktopApp) registerCallbacks(gtx layout.Context) {
+	gioplugins.Execute(gtx, giowebview.MessageReceiverCmd{
+		View: &a.tag,
+		Tag:  &a.tag,
+		Name: downloadCallback,
+	})
+	gioplugins.Execute(gtx, giowebview.MessageReceiverCmd{
+		View: &a.tag,
+		Tag:  &a.tag,
+		Name: playbackCallback,
+	})
+	gioplugins.Execute(gtx, giowebview.MessageReceiverCmd{
+		View: &a.tag,
+		Tag:  &a.tag,
+		Name: appStateCallback,
+	})
+}
+
 func (a *desktopApp) ensureBridge(gtx layout.Context) {
 	if !a.bridgeInstalled {
-		gioplugins.Execute(gtx, giowebview.InstallJavascriptCmd{
-			View:   &a.tag,
-			Script: bridgeScript,
-		})
+		a.installBridge(gtx)
 		a.bridgeInstalled = true
 	}
 
 	if a.bridgeInstalled && !a.callbackRegistered {
 		// 只注册一次 JS 回调，这样下载链接会交回桌面壳层处理，
 		// 而不是在内嵌 WebView 里继续跳转。
-		gioplugins.Execute(gtx, giowebview.MessageReceiverCmd{
-			View: &a.tag,
-			Tag:  &a.tag,
-			Name: downloadCallback,
-		})
-		gioplugins.Execute(gtx, giowebview.MessageReceiverCmd{
-			View: &a.tag,
-			Tag:  &a.tag,
-			Name: playbackCallback,
-		})
-		gioplugins.Execute(gtx, giowebview.MessageReceiverCmd{
-			View: &a.tag,
-			Tag:  &a.tag,
-			Name: appStateCallback,
-		})
+		a.registerCallbacks(gtx)
 		a.callbackRegistered = true
 		a.pendingInitialNav = true
 		a.window.Invalidate()
@@ -325,6 +377,7 @@ func (a *desktopApp) handlePendingReload(gtx layout.Context) {
 		return
 	}
 
+	log.Printf("pending reload navigating to %s", a.navigationTarget())
 	a.navigateTo(gtx, a.navigationTarget())
 }
 
@@ -338,6 +391,13 @@ func (a *desktopApp) handleInitialNavigationRecovery(gtx layout.Context) {
 
 	// NavigateCmd can be dropped before the native WebView exists, so keep
 	// retrying until the page explicitly confirms that it loaded.
+	// InstallJavascriptCmd and MessageReceiverCmd can be dropped the same way:
+	// without the bridge script the page cannot acknowledge, and without the
+	// callback registration the acknowledgement is silently discarded by the
+	// plugin, so re-issue both alongside the navigation.
+	log.Printf("webview load not acknowledged yet, retrying bridge + navigation")
+	a.installBridge(gtx)
+	a.registerCallbacks(gtx)
 	a.navigateTo(gtx, a.navigationTarget())
 }
 
@@ -445,6 +505,10 @@ func (a *desktopApp) handleWebViewMessage(raw string) {
 		a.handleWebViewState(strings.TrimPrefix(raw, "state:"))
 		return
 	}
+	if strings.HasPrefix(raw, "url:") {
+		a.handleSPAURLChange(strings.TrimPrefix(raw, "url:"))
+		return
+	}
 
 	u, err := url.Parse(raw)
 	if err != nil {
@@ -468,7 +532,17 @@ func (a *desktopApp) handleNavigationEvent(rawURL string) {
 	}
 }
 
+// handleSPAURLChange 同步 SPA 导航后的地址。fetch + pushState 不产生原生
+// NavigationEvent，不同步的话 currentWebURL 会停留在首页，一旦重载（从后台
+// 恢复、启动重试）就会把用户送回首页、丢失搜索结果。
+func (a *desktopApp) handleSPAURLChange(rawURL string) {
+	if rawURL != "" {
+		a.currentWebURL = rawURL
+	}
+}
+
 func (a *desktopApp) handleWebViewState(state string) {
+	log.Printf("webview state: %s", state)
 	switch strings.TrimSpace(state) {
 	case "loaded":
 		a.initialNavAcked = true

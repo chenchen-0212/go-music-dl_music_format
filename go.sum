@@ -94,6 +94,8 @@ github.com/guohuiyuan/music-lib v1.1.1-0.20260824162426-6278eb95ced9 h1:9odH1hwM
 github.com/guohuiyuan/music-lib v1.1.1-0.20260824162426-6278eb95ced9/go.mod h1:iIFU9eHsTWF8Ovp36EL8MPxV9uw2N6BUNaZt/FQwAls=
 github.com/guohuiyuan/music-lib v1.1.1-0.20260827101307-9a44386f0449 h1:P5x23H6UCIyU0Y8TVk1JFO6mH28oN4LGlppJBzwn43s=
 github.com/guohuiyuan/music-lib v1.1.1-0.20260827101307-9a44386f0449/go.mod h1:iIFU9eHsTWF8Ovp36EL8MPxV9uw2N6BUNaZt/FQwAls=
+github.com/guohuiyuan/music-lib v1.1.1-0.20260828151741-02402db9ef9d h1:2fceaJeB8cbpoWVGq405oW5BvI1i+4msFNxx4BDb5hg=
+github.com/guohuiyuan/music-lib v1.1.1-0.20260828151741-02402db9ef9d/go.mod h1:iIFU9eHsTWF8Ovp36EL8MPxV9uw2N6BUNaZt/FQwAls=
 github.com/hashicorp/golang-lru/v2 v2.0.7 h1:a+bsQ5rvGLjzHuww6tVxozPZFVghXaHOwFs4luLUK2k=
 github.com/hashicorp/golang-lru/v2 v2.0.7/go.mod h1:QeFd9opnmA6QUJc5vARoKUSoFhyfM2/ZepoAG6RGpeM=
 github.com/inconshreveable/mousetrap v1.1.0 h1:wN+x4NVGpMsO7ErUn/mUI3vEoE6Jt13X2s0bqwp9tc8=

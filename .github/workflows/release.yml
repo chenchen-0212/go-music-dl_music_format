@@ -375,28 +375,40 @@ jobs:
 
       - name: Upload desktop_go Artifacts (Linux)
         if: matrix.goos == 'linux'
-        uses: softprops/action-gh-release@v2
+        uses: Wandalen/wretry.action@v3.8.0
         with:
-          files: |
-            ${{ matrix.archive_name }}
-            music-dl-desktop-go-linux-${{ matrix.goarch }}.deb
-            music-dl-desktop-go-linux-${{ matrix.goarch }}.rpm
-            music-dl-desktop-go-linux-${{ matrix.goarch }}.AppImage
+          attempt_limit: 5
+          attempt_delay: 10000
+          action: softprops/action-gh-release@v2
+          with: |
+            files: |
+              ${{ matrix.archive_name }}
+              music-dl-desktop-go-linux-${{ matrix.goarch }}.deb
+              music-dl-desktop-go-linux-${{ matrix.goarch }}.rpm
+              music-dl-desktop-go-linux-${{ matrix.goarch }}.AppImage
 
       - name: Upload desktop_go Artifacts (macOS)
         if: matrix.goos == 'darwin'
-        uses: softprops/action-gh-release@v2
+        uses: Wandalen/wretry.action@v3.8.0
         with:
-          files: |
-            ${{ matrix.archive_name }}
-            music-dl-desktop-go-macos-${{ matrix.goarch }}.dmg
-            music-dl-desktop-go-macos-${{ matrix.goarch }}.pkg
+          attempt_limit: 5
+          attempt_delay: 10000
+          action: softprops/action-gh-release@v2
+          with: |
+            files: |
+              ${{ matrix.archive_name }}
+              music-dl-desktop-go-macos-${{ matrix.goarch }}.dmg
+              music-dl-desktop-go-macos-${{ matrix.goarch }}.pkg
 
       - name: Upload desktop_go Artifacts (Windows)
         if: matrix.goos == 'windows'
-        uses: softprops/action-gh-release@v2
+        uses: Wandalen/wretry.action@v3.8.0
         with:
-          files: ${{ matrix.archive_name }}
+          attempt_limit: 5
+          attempt_delay: 10000
+          action: softprops/action-gh-release@v2
+          with: |
+            files: ${{ matrix.archive_name }}
 
   # 4. Android APK build via package_app.bat
   build-android-apk:
@@ -536,12 +548,16 @@ jobs:
             music-dl_x86_64.apk
 
       - name: Upload APK to Release
-        uses: softprops/action-gh-release@v2
+        uses: Wandalen/wretry.action@v3.8.0
         with:
-          files: |
-            music-dl.apk
-            music-dl_arm64-v8a.apk
-            music-dl_x86_64.apk
+          attempt_limit: 5
+          attempt_delay: 10000
+          action: softprops/action-gh-release@v2
+          with: |
+            files: |
+              music-dl.apk
+              music-dl_arm64-v8a.apk
+              music-dl_x86_64.apk
 
   # 5. iOS app build via Gio UI
   build-ios-app:
@@ -575,9 +591,13 @@ jobs:
           path: music-dl-ios-unsigned.ipa
 
       - name: Upload unsigned iOS signing package to Release
-        uses: softprops/action-gh-release@v2
+        uses: Wandalen/wretry.action@v3.8.0
         with:
-          files: music-dl-ios-unsigned.ipa
+          attempt_limit: 5
+          attempt_delay: 10000
+          action: softprops/action-gh-release@v2
+          with: |
+            files: music-dl-ios-unsigned.ipa
 
       - name: Check iOS signing inputs
         id: ios_signing
@@ -633,9 +653,13 @@ jobs:
 
       - name: Upload iOS App to Release
         if: steps.ios_signing.outputs.enabled == 'true'
-        uses: softprops/action-gh-release@v2
+        uses: Wandalen/wretry.action@v3.8.0
         with:
-          files: music-dl-ios.ipa
+          attempt_limit: 5
+          attempt_delay: 10000
+          action: softprops/action-gh-release@v2
+          with: |
+            files: music-dl-ios.ipa
 
   # 6. Windows desktop build
   build-windows-desktop:
@@ -694,9 +718,13 @@ jobs:
           if ($icon.Size.Width -lt 16 -or $icon.Size.Height -lt 16) { throw "desktop icon is unexpectedly small" }
 
       - name: Upload Artifacts
-        uses: softprops/action-gh-release@v2
+        uses: Wandalen/wretry.action@v3.8.0
         with:
-          files: music-dl-desktop-rust-windows-${{ matrix.arch_name }}.zip
+          attempt_limit: 5
+          attempt_delay: 10000
+          action: softprops/action-gh-release@v2
+          with: |
+            files: music-dl-desktop-rust-windows-${{ matrix.arch_name }}.zip
 
   # 7. macOS desktop build
   build-macos:
@@ -809,11 +837,15 @@ jobs:
           codesign --verify --deep --strict bundle/music-dl-desktop-rust.app
 
       - name: Upload Artifacts
-        uses: softprops/action-gh-release@v2
+        uses: Wandalen/wretry.action@v3.8.0
         with:
-          files: |
-            music-dl-desktop-rust-macos-*.dmg
-            music-dl-desktop-rust-macos-*.pkg
+          attempt_limit: 5
+          attempt_delay: 10000
+          action: softprops/action-gh-release@v2
+          with: |
+            files: |
+              music-dl-desktop-rust-macos-*.dmg
+              music-dl-desktop-rust-macos-*.pkg
 
   # 8. Linux desktop build
   build-linux-desktop:
@@ -882,9 +914,13 @@ jobs:
           rm -rf squashfs-root
 
       - name: Upload Desktop Artifacts
-        uses: softprops/action-gh-release@v2
+        uses: Wandalen/wretry.action@v3.8.0
         with:
-          files: |
-            *.deb
-            *.rpm
-            music-dl-desktop-rust-linux-amd64.AppImage
+          attempt_limit: 5
+          attempt_delay: 10000
+          action: softprops/action-gh-release@v2
+          with: |
+            files: |
+              *.deb
+              *.rpm
+              music-dl-desktop-rust-linux-amd64.AppImage

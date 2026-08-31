@@ -906,10 +906,16 @@ func RegisterMusicRoutes(api, configAPI *gin.RouterGroup) {
 			}
 			defer resp.Body.Close()
 			encryptedData, _ := io.ReadAll(resp.Body)
-			finalData, err := soda.DecryptAudio(encryptedData, info.PlayAuth)
-			if err != nil {
-				c.String(500, "Decrypt failed")
-				return
+			var finalData []byte
+			// 汽水 SEO 路径返回明文 m4a（无 play_auth）。
+			if strings.TrimSpace(info.PlayAuth) == "" {
+				finalData = encryptedData
+			} else {
+				finalData, err = soda.DecryptAudio(encryptedData, info.PlayAuth)
+				if err != nil {
+					c.String(500, "Decrypt failed")
+					return
+				}
 			}
 			ext := core.DetectAudioExt(finalData)
 			filename := core.BuildDownloadFilename(tempSong, ext, settings.DownloadFilenameTemplate)

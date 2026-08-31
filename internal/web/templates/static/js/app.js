@@ -982,7 +982,7 @@ function bindSearchForm(root = document) {
     });
     targetURL.search = params.toString();
 
-    navigateTo(targetURL.toString());
+    navigateTo(targetURL.toString(), { scrollToResults: true });
   };
 }
 
@@ -1300,6 +1300,32 @@ function syncRightToolbar(nextDoc, currentContainer) {
   refreshAuthFloat();
 }
 
+// 结果区顶部至少要有这么多像素可见，才认为用户已经能看到搜索结果。
+const MIN_VISIBLE_RESULTS_PX = 120;
+
+// 小屏（安卓 WebView）首屏几乎被搜索框与搜索源面板占满，搜索后若仍停在页面
+// 顶部，结果列表会落在首屏之外，用户会误以为"搜索为空"。这里把结果区（无结果
+// 时为空状态提示）滚到视口顶部。结果区已有足够高度可见时不滚动，避免桌面端
+// 无谓跳动。只在搜索提交时调用，分页/播放列表等内部导航保持原行为。
+function scrollToSearchResults() {
+  const target =
+    document.querySelector(".list-header") ||
+    document.querySelector(".no-results");
+  if (!target) {
+    return;
+  }
+
+  const rect = target.getBoundingClientRect();
+  if (rect.top >= 0 && window.innerHeight - rect.top >= MIN_VISIBLE_RESULTS_PX) {
+    return;
+  }
+
+  window.scrollTo({
+    top: Math.max(rect.top + window.scrollY - 12, 0),
+    behavior: "auto",
+  });
+}
+
 async function navigateTo(url, options = {}) {
   let targetURL;
   try {
@@ -1371,7 +1397,9 @@ async function navigateTo(url, options = {}) {
     initializePageContent(currentContainer);
     updateFloatPageNav();
 
-    if (options.scroll !== false) {
+    if (options.scrollToResults) {
+      scrollToSearchResults();
+    } else if (options.scroll !== false) {
       window.scrollTo({ top: 0, behavior: "auto" });
     }
 
@@ -1380,6 +1408,15 @@ async function navigateTo(url, options = {}) {
     if (error && error.name === "AbortError") {
       return false;
     }
+    // WebView 可能不把 console 输出到 logcat，SPA 回退时把错误经桥接回传，
+    // 便于在壳层日志里定位是哪一步在安卓端失败。
+    try {
+      if (globalThis.callback && typeof globalThis.callback.musicDlAppState === "function") {
+        globalThis.callback.musicDlAppState(
+          "spa_error:" + (error && error.message ? error.message : String(error))
+        );
+      }
+    } catch (_) {}
     window.location.href = targetURL.toString();
     return false;
   } finally {
@@ -1550,6 +1587,11 @@ document.addEventListener("DOMContentLoaded", function () {
   bindPageNavigationEvents();
   initializePageContent(document);
   updateFloatPageNav();
+  // 直接打开搜索结果链接，或 SPA 失败回退到整页加载时，同样把结果滚入视口。
+  // 仅在 URL 带搜索词时触发，普通页面加载不受影响。
+  if (new URLSearchParams(window.location.search).get("q")) {
+    scrollToSearchResults();
+  }
   if (
     new URLSearchParams(window.location.search).get(OPEN_CONFIG_QUERY) === "1"
   ) {
@@ -4903,20 +4945,29 @@ const KaraokeLyrics = (() => {
 
 window.KaraokeLyrics = KaraokeLyrics;
 
-// APlayer Config
-const ap = new APlayer({
-  container: document.getElementById("aplayer"),
-  fixed: true,
-  autoplay: false,
-  theme: "#10b981",
-  loop: "all",
-  order: "list",
-  preload: "metadata",
-  volume: 0.7,
-  listFolded: false,
-  lrcType: 3,
-  audio: [],
-});
+// APlayer Config. APlayer 由 CDN 加载，若 CDN 不可达会影响整个脚本；
+// 这里把初始化单独保护起来，避免播放器库缺失导致页面其他功能不可用。
+let ap = null;
+try {
+  if (typeof APlayer === "undefined") {
+    throw new Error("APlayer CDN 未加载");
+  }
+  ap = new APlayer({
+    container: document.getElementById("aplayer"),
+    fixed: true,
+    autoplay: false,
+    theme: "#10b981",
+    loop: "all",
+    order: "list",
+    preload: "metadata",
+    volume: 0.7,
+    listFolded: false,
+    lrcType: 3,
+    audio: [],
+  });
+} catch (error) {
+  console.warn("[music-dl] APlayer 初始化失败，播放器功能不可用:", error);
+}
 
 window.ap = ap;
 

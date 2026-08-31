@@ -163,6 +163,46 @@ func TestInitialNavigationWaitsForServerReady(t *testing.T) {
 	}
 }
 
+func TestBridgeAcksLoadWhenInjectedAfterDOMContentLoaded(t *testing.T) {
+	// 桥接脚本晚于 DOMContentLoaded 注入时，只挂监听器会永远等不到事件，
+	// Go 侧收不到加载确认就会一直重试导航，把搜索结果冲掉。
+	if !strings.Contains(bridgeScript, `document.readyState === "loading"`) {
+		t.Fatal("bridgeScript should check document.readyState before waiting for DOMContentLoaded")
+	}
+	// 两个分支都要补发确认。
+	if strings.Count(bridgeScript, `notifyAppState("loaded")`) < 2 {
+		t.Fatal(`bridgeScript should notify "loaded" both when loading and when already ready`)
+	}
+}
+
+func TestBridgeSyncsSPANavigationURL(t *testing.T) {
+	for _, want := range []string{
+		"nativePushState",
+		"nativeReplaceState",
+		`"url:" + url`,
+	} {
+		if !strings.Contains(bridgeScript, want) {
+			t.Fatalf("bridgeScript missing SPA URL sync token %q", want)
+		}
+	}
+}
+
+func TestHandleWebViewMessageSPAURLTracksCurrentURL(t *testing.T) {
+	app := newDesktopApp(nil, nil)
+	raw := "http://127.0.0.1:37777/music/search?q=%E5%91%A8%E6%9D%B0%E4%BC%A6"
+	app.handleWebViewMessage("url:" + raw)
+
+	if app.pendingExternalOpenTo != nil {
+		t.Fatal("url: message must not be treated as an external download")
+	}
+	if app.currentWebURL != raw {
+		t.Fatalf("currentWebURL = %q, want %q", app.currentWebURL, raw)
+	}
+	if app.initialNavAcked {
+		t.Fatal("SPA URL sync must not acknowledge the initial navigation")
+	}
+}
+
 func gotURL(app *desktopApp) string {
 	if app.pendingExternalOpenTo == nil {
 		return ""

@@ -241,6 +241,10 @@ func FetchDecryptedSodaAudio(song *model.Song) ([]byte, error) {
 		return nil, err
 	}
 
+	// 汽水 SEO 路径返回明文 m4a（无 play_auth），只需下载无需解密。
+	if strings.TrimSpace(info.PlayAuth) == "" {
+		return encryptedData, nil
+	}
 	return soda.DecryptAudio(encryptedData, info.PlayAuth)
 }
 
